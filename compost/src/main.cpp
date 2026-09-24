@@ -255,6 +255,7 @@ void setup()
   // Configure MQTT
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
   mqttClient.setCallback(mqttCallback); // Register callback for incoming MQTT messages
+  mqttClient.setBufferSize(512);        // Increase buffer to prevent packet drop with all sensors + motor
 
   // Start WebSocket Server
   webSocket.begin();
@@ -293,6 +294,8 @@ void loop()
   {
     unoJson = Serial2.readStringUntil('\n');
     unoJson.trim();
+    Serial.print("[UNO RX]: ");
+    Serial.println(unoJson);
   }
 
   // 2. Periodically read internal sensors and broadcast/publish combined JSON
