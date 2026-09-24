@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telemetry Hub</title>
+
+  <!-- MQTT.js via CDN — used when connecting through the public broker (Vercel demo mode) -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+  <style>
+    /* Classic Windows 95 System Palette */
+    body {
+      background-color: #008080; /* Classic Teal Desktop */
+      font-family: "MS Sans Serif", "Tahoma", "Arial", sans-serif;
+      font-size: 11px;
+      color: #000000;
+      margin: 0;
+      padding: 10px;
+      user-select: none;
+    }
+
+    /* Outset bevel (frames, sensor boxes) */
+    .outset-bevel {
+      border-top: 2px solid #ffffff;
+      border-left: 2px solid #ffffff;
+      border-right: 2px solid #808080;
+      border-bottom: 2px solid #808080;
+      background-color: #c0c0c0;
+    }
+
+    /* Inset bevel (text boxes, log wells, progress bars) */
+    .inset-bevel {
+      border-top: 2px solid #808080;
+      border-left: 2px solid #808080;
+      border-right: 2px solid #ffffff;
+      border-bottom: 2px solid #ffffff;
+      background-color: #ffffff;
+    }
+
+    /* Group Box (Fieldset) style */
+    fieldset {
+      border-top: 2px solid #808080;
+      border-left: 2px solid #808080;
+      border-right: 2px solid #ffffff;
+      border-bottom: 2px solid #ffffff;
+      margin: 8px 0;
+      padding: 10px;
+      background-color: #c0c0c0;
+    }
+
+    legend {
+      padding: 0 4px;
+      font-weight: bold;
+    }
+
+    .connection-layout {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .motor-layout {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .input-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .win95-input {
+      padding: 3px 5px;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 12px;
+      width: 250px;
+      outline: none;
+    }
+
+    /* Standard Button */
+    .win95-btn {
+      font-family: inherit;
+      font-size: 11px;
+      background-color: #c0c0c0;
+      border-top: 2px solid #ffffff;
+      border-left: 2px solid #ffffff;
+      border-right: 2px solid #808080;
+      border-bottom: 2px solid #808080;
+      padding: 4px 14px;
+      cursor: default;
+      outline: none;
+      box-shadow: 1px 1px 0px 0px #000000;
+    }
+
+    .win95-btn:active {
+      border-top: 2px solid #808080;
+      border-left: 2px solid #808080;
+      border-right: 2px solid #ffffff;
+      border-bottom: 2px solid #ffffff;
+      box-shadow: none;
+      padding: 5px 13px 3px 15px; /* Shift text slightly down-right */
+    }
+
+    .win95-btn.danger-active {
+      color: #800000;
+      font-weight: bold;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: bold;
+      padding: 2px 6px;
+      background-color: #d8d8d8;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      background-color: #ff0000;
+      border: 1px solid #000000;
+    }
+
+    .status-dot.connected {
+      background-color: #00ff00;
+    }
+
+    /* Main Dashboard Layout */
+    .main-layout {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 10px;
+    }
+
+    @media (max-width: 768px) {
+      .main-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    @media (max-width: 600px) {
+      .telemetry-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Sensor Box */
+    .sensor-box {
+      padding: 8px 10px;
+    }
+
+    .sensor-header {
+      display: flex;
+      justify-content: space-between;
+      font-weight: bold;
+      border-bottom: 1px solid #808080;
+      padding-bottom: 3px;
+      margin-bottom: 6px;
+      color: #000080;
+    }
+
+    .sensor-value-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+
+    .sensor-num {
+      font-family: "Courier New", Courier, monospace;
+      font-size: 20px;
+      font-weight: bold;
+      color: #000000;
+      padding: 2px 6px;
+      width: 110px;
+      text-align: right;
+    }
+
+    .sensor-unit {
+      font-weight: bold;
+      color: #404040;
+    }
+
+    /* Segmented Progress Bar */
+    .progress-well {
+      height: 16px;
+      position: relative;
+      margin-top: 4px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background-image: repeating-linear-gradient(
+        90deg,
+        #000080,             /* Block color */
+        #000080 8px,         /* Block size */
+        #c0c0c0 8px,         /* Gap starts */
+        #c0c0c0 10px         /* Gap size */
+      );
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .sensor-status {
+      font-weight: bold;
+      text-align: center;
+      padding: 1px 4px;
+      border: 1px solid #808080;
+      background-color: #d8d8d8;
+    }
+
+    /* Logs & Diagnostics */
+    .side-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .log-well {
+      height: 220px;
+      overflow-y: scroll;
+      font-family: "Courier New", Courier, monospace;
+      font-size: 11px;
+      padding: 5px;
+      color: #000000;
+    }
+
+    .log-entry {
+      border-bottom: 1px dotted #c0c0c0;
+      padding: 2px 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .log-time {
+      color: #000080;
+      font-weight: bold;
+    }
+
+    .sys-info-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 4px;
+    }
+
+    .sys-info-table td {
+      padding: 3px 5px;
+      border-bottom: 1px dotted #808080;
+    }
+
+    .sys-info-table td:first-child {
+      font-weight: bold;
+      color: #404040;
+    }
+
+    /* Win95 Status Bar */
+    .status-bar {
+      display: flex;
+      margin-top: 10px;
+      gap: 2px;
+    }
+
+    .status-bar-field {
+      padding: 2px 6px;
+      font-size: 10px;
+    }
+
+    .status-bar-field.flex-grow {
+      flex-grow: 1;
+    }
+
+    .status-bar-field.fixed-width {
+      width: 120px;
+      text-align: center;
+    }
+
+    /* Mode radio buttons */
+    .mode-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .mode-group label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: default;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Group: Connection -->
+  <fieldset>
+    <legend>Connection Settings</legend>
+    <div class="connection-layout">
+
+      <!-- Mode selector -->
+      <div class="input-group">
+        <span style="font-weight: bold;">Mode:</span>
+        <div class="mode-group">
+          <label>
+            <input type="radio" name="connMode" value="mqtt" id="modeMqtt" checked onchange="onModeChange()">
+            MQTT (Vercel / Remote)
+          </label>
+          <label>
+            <input type="radio" name="connMode" value="ws" id="modeWs" onchange="onModeChange()">
+            WebSocket (Local)
+          </label>
+        </div>
+      </div>
+
+      <div class="input-group">
+        <span style="font-weight: bold;" id="addrLabel">Broker Address:</span>
+        <input type="text" id="ipInput" class="win95-input inset-bevel" value="wss://broker.hivemq.com:8884/mqtt">
+      </div>
+
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button id="connectBtn" class="win95-btn" onclick="toggleConnection()">Connect</button>
+
+        <div class="status-badge inset-bevel">
+          <div id="statusDot" class="status-dot"></div>
+          <span id="statusText">Disconnected</span>
+        </div>
+      </div>
+    </div>
+  </fieldset>
+
+  <!-- Motor Control Group: L298N Dual H-Bridge (IN3 -> D14, IN4 -> D27) -->
+  <fieldset>
+    <legend>Aeration Motor & Pump Control (L298N: IN3/D14, IN4/D27)</legend>
+
+    <div class="motor-layout">
+      <!-- Left side: Toggle button, Status LED, and Active Runtime -->
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button id="motorBtn" class="win95-btn" onclick="toggleMotor()">Start Motor</button>
+
+        <div class="status-badge inset-bevel">
+          <div id="motorStatusDot" class="status-dot"></div>
+          <span id="motorState" style="min-width: 58px; text-align: center; color: #800000; font-weight: bold;">STOPPED</span>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:5px;">
+          <span style="font-weight:bold; color:#404040;">Active Runtime:</span>
+          <span id="motorRuntime" class="inset-bevel" style="padding: 2px 6px; font-family: 'Courier New', monospace; font-size: 11px;">00:00:00</span>
+        </div>
+      </div>
+
+      <!-- Right side: Auto-Off Timer and Quick Pulse -->
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <span style="font-weight:bold;">Auto-Off Timer:</span>
+        <select id="motorTimerSelect" class="win95-input inset-bevel" style="width:115px; padding:2px;">
+          <option value="0">Continuous</option>
+          <option value="10">10 Seconds</option>
+          <option value="30">30 Seconds</option>
+          <option value="60">1 Minute</option>
+          <option value="300">5 Minutes</option>
+        </select>
+
+        <button class="win95-btn" onclick="pulseMotor(5)">Pulse 5s</button>
+      </div>
+    </div>
+  </fieldset>
+
+  <!-- Bottom Layout Split -->
+  <div class="main-layout">
+
+    <!-- Left: Telemetry Panel Grid -->
+    <fieldset style="margin: 0;">
+      <legend>Live Telemetry Readings</legend>
+      <div class="telemetry-grid">
+
+        <!-- O2 Sensor -->
+        <div class="sensor-box outset-bevel">
+          <div class="sensor-header">
+            <span>Oxygen Level (O₂)</span>
+            <span>AOF1010</span>
+          </div>
+          <div class="sensor-value-row">
+            <div class="sensor-num inset-bevel" id="o2Val">--.-</div>
+            <span class="sensor-unit">% Vol</span>
+          </div>
+          <div class="progress-well inset-bevel">
+            <div class="progress-fill" id="o2Bar"></div>
+          </div>
+          <div style="margin-top: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span>Target: 10 - 21%</span>
+            <div class="sensor-status" id="o2Status">NO DATA</div>
+          </div>
+        </div>
+
+        <!-- CO2 Sensor -->
+        <div class="sensor-box outset-bevel">
+          <div class="sensor-header">
+            <span>Carbon Dioxide (CO₂)</span>
+            <span>SCD30</span>
+          </div>
+          <div class="sensor-value-row">
+            <div class="sensor-num inset-bevel" id="co2Val">----</div>
+            <span class="sensor-unit">ppm</span>
+          </div>
+          <div class="progress-well inset-bevel">
+            <div class="progress-fill" id="co2Bar"></div>
+          </div>
+          <div style="margin-top: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span>Max: 10,000 ppm</span>
+            <div class="sensor-status" id="co2Status">NO DATA</div>
+          </div>
+        </div>
+
+        <!-- Temperature -->
+        <div class="sensor-box outset-bevel">
+          <div class="sensor-header">
+            <span>Compost Temp</span>
+            <span>SCD30</span>
+          </div>
+          <div class="sensor-value-row">
+            <div class="sensor-num inset-bevel" id="tempVal">--.-</div>
+            <span class="sensor-unit">°C</span>
+          </div>
+          <div class="progress-well inset-bevel">
+            <div class="progress-fill" id="tempBar"></div>
+          </div>
+          <div style="margin-top: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span id="tempEnv">Ambient: --.- °C</span>
+            <div class="sensor-status" id="tempStatus">NO DATA</div>
+          </div>
+        </div>
+
+        <!-- Humidity -->
+        <div class="sensor-box outset-bevel">
+          <div class="sensor-header">
+            <span>Relative Humidity</span>
+            <span>SCD30</span>
+          </div>
+          <div class="sensor-value-row">
+            <div class="sensor-num inset-bevel" id="humVal">--.-</div>
+            <span class="sensor-unit">% RH</span>
+          </div>
+          <div class="progress-well inset-bevel">
+            <div class="progress-fill" id="humBar"></div>
+          </div>
+          <div style="margin-top: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span>Target: 40 - 60%</span>
+            <div class="sensor-status" id="humStatus">NO DATA</div>
+          </div>
+        </div>
+
+        <!-- Ammonia (MQ137) -->
+        <div class="sensor-box outset-bevel">
+          <div class="sensor-header">
+            <span>Ammonia (NH₃)</span>
+            <span>MQ137 ADC</span>
+          </div>
+          <div class="sensor-value-row">
+            <div class="sensor-num inset-bevel" id="mq137Val">-.---</div>
+            <span class="sensor-unit">Volts</span>
+          </div>
+          <div class="progress-well inset-bevel">
+            <div class="progress-fill" id="mq137Bar"></div>
+          </div>
+          <div style="margin-top: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span id="mq137Raw">Raw: ----</span>
+            <div class="sensor-status" id="mq137Status">NO DATA</div>
+          </div>
+        </div>
+
+        <!-- NO2 / VOC (MICS2714) -->
+        <div class="sensor-box outset-bevel">
+          <div class="sensor-header">
+            <span>NO₂ / VOC Gases</span>
+            <span>MICS-2714</span>
+          </div>
+          <div class="sensor-value-row">
+            <div class="sensor-num inset-bevel" id="micsVal">-.---</div>
+            <span class="sensor-unit">Volts</span>
+          </div>
+          <div class="progress-well inset-bevel">
+            <div class="progress-fill" id="micsBar"></div>
+          </div>
+          <div style="margin-top: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span id="micsRaw">Raw: ----</span>
+            <div class="sensor-status" id="micsStatus">NO DATA</div>
+          </div>
+        </div>
+
+        <!-- CO & Combustibles (MQ9) -->
+        <div class="sensor-box outset-bevel" style="grid-column: span 2;">
+          <div class="sensor-header">
+            <span>Carbon Monoxide & Combustible Gases (MQ9)</span>
+            <span>Analog Pin 34</span>
+          </div>
+          <div class="sensor-value-row">
+            <div class="sensor-num inset-bevel" id="mq9Val">-.---</div>
+            <span class="sensor-unit">Volts</span>
+          </div>
+          <div class="progress-well inset-bevel">
+            <div class="progress-fill" id="mq9Bar"></div>
+          </div>
+          <div style="margin-top: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span id="mq9Raw">Raw ADC: ----</span>
+            <div class="sensor-status" id="mq9Status">NO DATA</div>
+          </div>
+        </div>
+
+      </div>
+    </fieldset>
+
+    <!-- Right: Side diagnostic layout -->
+    <div class="side-layout">
+
+      <fieldset style="margin: 0; flex-grow: 1; display: flex; flex-direction: column;">
+        <legend>Diagnostic Log Stream</legend>
+        <div id="logStream" class="log-well inset-bevel" style="flex-grow: 1;">
+          <div style="color: #808080;">Awaiting connection...</div>
+        </div>
+      </fieldset>
+
+      <fieldset style="margin: 0;">
+        <legend>Device Details</legend>
+        <table class="sys-info-table">
+          <tr>
+            <td>IP Address:</td>
+            <td id="diagConn">Offline</td>
+          </tr>
+          <tr>
+            <td>MQTT Topic:</td>
+            <td>compost/sensors</td>
+          </tr>
+          <tr>
+            <td>Motor Driver:</td>
+            <td>L298N (IN3: D14, IN4: D27)</td>
+          </tr>
+          <tr>
+            <td>Motor State:</td>
+            <td id="diagMotor" style="font-weight: bold; color: #800000;">STOPPED</td>
+          </tr>
+          <tr>
+            <td>Baud Rate:</td>
+            <td>9600 (Uno) / 115200 (PC)</td>
+          </tr>
+          <tr>
+            <td>System State:</td>
+            <td id="diagState">IDLE</td>
+          </tr>
+        </table>
+      </fieldset>
+
+    </div>
+
+  </div>
+
+  <!-- Bottom Windows 95 Status Bar -->
+  <div class="status-bar">
+    <div class="status-bar-field flex-grow inset-bevel" id="sysMsg">System Ready. Click Connect to start telemetry acquisition.</div>
+    <div class="status-bar-field fixed-width inset-bevel">Telemetry Monitor v1.0.0</div>
+    <div class="status-bar-field fixed-width inset-bevel">PORT: 81 / 1883</div>
+  </div>
+
+  <script>
+    // ============================================================
+    // Connection state
+    // ============================================================
+    let ws = null;          // Raw WebSocket handle (local mode)
+    let mqttClient = null;  // MQTT.js client handle (remote mode)
+
+    const MQTT_SENSOR_TOPIC = "compost/sensors";
+    const MQTT_MOTOR_TOPIC  = "compost/motor";
+
+    // Motor runtime and auto-off variables
+    let motorRunning = false;
+    let motorStartTime = null;
+    let motorRuntimeInterval = null;
+    let motorAutoOffTimeout = null;
+
+    // ============================================================
+    // Mode toggle — updates the address field placeholder/default
+    // ============================================================
+    function getMode() {
+      return document.querySelector('input[name="connMode"]:checked').value;
+    }
+
+    function onModeChange() {
+      const mode = getMode();
+      const addrLabel = document.getElementById("addrLabel");
+      const ipInput   = document.getElementById("ipInput");
+
+      if (mode === "mqtt") {
+        addrLabel.innerText = "Broker Address:";
+        if (!ipInput.value.startsWith("wss://") && !ipInput.value.startsWith("ws://broker")) {
+          ipInput.value = "wss://broker.hivemq.com:8884/mqtt";
+        }
+      } else {
+        addrLabel.innerText = "Server Address:";
+        if (ipInput.value.startsWith("wss://broker")) {
+          ipInput.value = "ws://compostpro.local:81";
+        }
+      }
+    }
+
+    // Restore saved address from local storage
+    if (localStorage.getItem("esp32_ws_ip")) {
+      document.getElementById("ipInput").value = localStorage.getItem("esp32_ws_ip");
+    }
+
+    // ============================================================
+    // Log helper
+    // ============================================================
+    function addLogEntry(text) {
+      const logContainer = document.getElementById("logStream");
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = document.createElement("div");
+      entry.className = "log-entry";
+      entry.innerHTML = `<span class="log-time">[${timestamp}]</span> ${text}`;
+
+      const isScrolledToBottom = logContainer.scrollHeight - logContainer.clientHeight <= logContainer.scrollTop + 20;
+      logContainer.appendChild(entry);
+      if (isScrolledToBottom || logContainer.childNodes.length <= 2) {
+        logContainer.scrollTop = logContainer.scrollHeight;
+      }
+
+      while (logContainer.childNodes.length > 50) {
+        logContainer.removeChild(logContainer.firstChild);
+      }
+    }
+
+    function clearLogs() {
+      document.getElementById("logStream").innerHTML = `<div style="color: #808080;">Log cleared.</div>`;
+      addLogEntry("Log buffer cleared.");
+    }
+
+    // ============================================================
+    // Motor State & UI Helpers
+    // ============================================================
+    function formatTime(totalSeconds) {
+      const hrs = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+      const mins = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+      const secs = String(totalSeconds % 60).padStart(2, '0');
+      return `${hrs}:${mins}:${secs}`;
+    }
+
+    function updateMotorRuntime() {
+      if (!motorStartTime) return;
+      const elapsed = Math.floor((Date.now() - motorStartTime) / 1000);
+      document.getElementById("motorRuntime").innerText = formatTime(elapsed);
+    }
+
+    function setMotorUIState(isRunning) {
+      motorRunning = isRunning;
+      const btn = document.getElementById("motorBtn");
+      const dot = document.getElementById("motorStatusDot");
+      const stateSpan = document.getElementById("motorState");
+      const diagMotor = document.getElementById("diagMotor");
+
+      if (isRunning) {
+        btn.innerText = "Stop Motor";
+        btn.classList.add("danger-active");
+        dot.className = "status-dot connected";
+        stateSpan.innerText = "RUNNING";
+        stateSpan.style.color = "#008000";
+        if (diagMotor) {
+          diagMotor.innerText = "RUNNING";
+          diagMotor.style.color = "#008000";
+        }
+
+        if (!motorRuntimeInterval) {
+          motorStartTime = Date.now();
+          updateMotorRuntime();
+          motorRuntimeInterval = setInterval(updateMotorRuntime, 1000);
+        }
+      } else {
+        btn.innerText = "Start Motor";
+        btn.classList.remove("danger-active");
+        dot.className = "status-dot";
+        stateSpan.innerText = "STOPPED";
+        stateSpan.style.color = "#800000";
+        if (diagMotor) {
+          diagMotor.innerText = "STOPPED";
+          diagMotor.style.color = "#800000";
+        }
+
+        if (motorRuntimeInterval) {
+          clearInterval(motorRuntimeInterval);
+          motorRuntimeInterval = null;
+        }
+        motorStartTime = null;
+        document.getElementById("motorRuntime").innerText = "00:00:00";
+
+        if (motorAutoOffTimeout) {
+          clearTimeout(motorAutoOffTimeout);
+          motorAutoOffTimeout = null;
+        }
+      }
+    }
+
+    // ============================================================
+    // UI updater — sensor telemetry
+    // ============================================================
+    function updateUI(data) {
+      // 0. Synchronize Motor state if included in telemetry
+      if (data.motor !== undefined) {
+        const isRunning = data.motor === 1 || data.motor === true;
+        if (isRunning !== motorRunning) {
+          setMotorUIState(isRunning);
+        }
+      }
+
+      // 1. Oxygen (o2)
+      if (data.o2 !== undefined && data.o2 !== -1) {
+        const o2 = parseFloat(data.o2);
+        document.getElementById("o2Val").innerText = o2.toFixed(1);
+        const percentage = Math.min((o2 / 21) * 100, 100);
+        document.getElementById("o2Bar").style.width = percentage + "%";
+
+        const status = document.getElementById("o2Status");
+        if (o2 >= 15) {
+          status.innerText = "OPTIMAL";
+          status.style.color = "#008000";
+        } else if (o2 >= 10) {
+          status.innerText = "WARNING";
+          status.style.color = "#808000";
+        } else {
+          status.innerText = "ANAEROBIC";
+          status.style.color = "#800000";
+        }
+      }
+
+      // 2. Carbon Dioxide (co2)
+      if (data.co2 !== undefined && data.co2 !== -1) {
+        const co2 = parseInt(data.co2);
+        document.getElementById("co2Val").innerText = co2;
+        const percentage = Math.min((co2 / 10000) * 100, 100);
+        document.getElementById("co2Bar").style.width = percentage + "%";
+
+        const status = document.getElementById("co2Status");
+        if (co2 < 4000) {
+          status.innerText = "OPTIMAL";
+          status.style.color = "#008000";
+        } else if (co2 < 8000) {
+          status.innerText = "ACTIVE";
+          status.style.color = "#808000";
+        } else {
+          status.innerText = "HIGH ACTIVITY";
+          status.style.color = "#800000";
+        }
+      }
+
+      // 3. Temperature & O2 Temp
+      if (data.temp !== undefined && data.temp !== -1) {
+        const temp = parseFloat(data.temp);
+        document.getElementById("tempVal").innerText = temp.toFixed(1);
+        const percentage = Math.min((temp / 80) * 100, 100);
+        document.getElementById("tempBar").style.width = percentage + "%";
+
+        const status = document.getElementById("tempStatus");
+        if (temp >= 55 && temp <= 65) {
+          status.innerText = "THERMOPHILIC";
+          status.style.color = "#008000";
+        } else if (temp >= 40 && temp < 55) {
+          status.innerText = "MESOPHILIC";
+          status.style.color = "#808000";
+        } else {
+          status.innerText = "INACTIVE";
+          status.style.color = "#800000";
+        }
+      }
+      if (data.o2_temp !== undefined && data.o2_temp !== -1) {
+        document.getElementById("tempEnv").innerText = `Ambient: ${parseFloat(data.o2_temp).toFixed(1)} °C`;
+      }
+
+      // 4. Humidity
+      if (data.hum !== undefined && data.hum !== -1) {
+        const hum = parseFloat(data.hum);
+        document.getElementById("humVal").innerText = hum.toFixed(1);
+        document.getElementById("humBar").style.width = hum + "%";
+
+        const status = document.getElementById("humStatus");
+        if (hum >= 50 && hum <= 60) {
+          status.innerText = "IDEAL";
+          status.style.color = "#008000";
+        } else if (hum >= 40 && hum <= 70) {
+          status.innerText = "ACCEPTABLE";
+          status.style.color = "#808000";
+        } else {
+          status.innerText = "DRY / WET";
+          status.style.color = "#800000";
+        }
+      }
+
+      // 5. Ammonia MQ137
+      if (data.mq137_v !== undefined) {
+        const mq137V = parseFloat(data.mq137_v);
+        document.getElementById("mq137Val").innerText = mq137V.toFixed(3);
+        const percentage = Math.min((mq137V / 3.3) * 100, 100);
+        document.getElementById("mq137Bar").style.width = percentage + "%";
+        document.getElementById("mq137Raw").innerText = `Raw: ${data.mq137_raw}`;
+
+        const status = document.getElementById("mq137Status");
+        if (mq137V < 1.0) {
+          status.innerText = "LOW ODOR";
+          status.style.color = "#008000";
+        } else if (mq137V < 2.0) {
+          status.innerText = "LEAK DETECT";
+          status.style.color = "#808000";
+        } else {
+          status.innerText = "VENT NEEDED";
+          status.style.color = "#800000";
+        }
+      }
+
+      // 6. MICS2714 NO2
+      if (data.mics2714_v !== undefined) {
+        const micsV = parseFloat(data.mics2714_v);
+        document.getElementById("micsVal").innerText = micsV.toFixed(3);
+        const percentage = Math.min((micsV / 3.3) * 100, 100);
+        document.getElementById("micsBar").style.width = percentage + "%";
+        document.getElementById("micsRaw").innerText = `Raw: ${data.mics2714_raw}`;
+
+        const status = document.getElementById("micsStatus");
+        if (micsV < 1.2) {
+          status.innerText = "CLEAR";
+          status.style.color = "#008000";
+        } else {
+          status.innerText = "GAS ACTIVE";
+          status.style.color = "#800000";
+        }
+      }
+
+      // 7. MQ9 CO
+      if (data.mq9_v !== undefined) {
+        const mq9V = parseFloat(data.mq9_v);
+        document.getElementById("mq9Val").innerText = mq9V.toFixed(3);
+        const percentage = Math.min((mq9V / 3.3) * 100, 100);
+        document.getElementById("mq9Bar").style.width = percentage + "%";
+        document.getElementById("mq9Raw").innerText = `Raw ADC: ${data.mq9_raw}`;
+
+        const status = document.getElementById("mq9Status");
+        if (mq9V < 1.0) {
+          status.innerText = "SAFE";
+          status.style.color = "#008000";
+        } else {
+          status.innerText = "HAZARD";
+          status.style.color = "#800000";
+        }
+      }
+    }
+
+    // ============================================================
+    // Shared incoming-message handler (used by both WS and MQTT)
+    // ============================================================
+    function handleIncomingMessage(text) {
+      addLogEntry(`RCV: ${text}`);
+      try {
+        if (text === "MOTOR_ON") {
+          setMotorUIState(true);
+          return;
+        }
+        if (text === "MOTOR_OFF") {
+          setMotorUIState(false);
+          return;
+        }
+        const parsed = JSON.parse(text);
+        if (parsed.status !== "connected") {
+          updateUI(parsed);
+        }
+      } catch (e) {
+        console.error("JSON Error:", e);
+      }
+    }
+
+    // ============================================================
+    // Shared UI state helpers
+    // ============================================================
+    function setConnectedUI(address) {
+      document.getElementById("statusDot").className = "status-dot connected";
+      document.getElementById("statusText").innerText = "Connected";
+      document.getElementById("connectBtn").innerText = "Disconnect";
+      document.getElementById("connectBtn").classList.add("danger-active");
+      document.getElementById("diagConn").innerText = address;
+      document.getElementById("diagState").innerText = "ONLINE";
+      document.getElementById("sysMsg").innerText = `Connected to ${address}. Streaming active.`;
+      addLogEntry("SYSTEM: Connection established.");
+    }
+
+    function setDisconnectedUI() {
+      document.getElementById("statusDot").className = "status-dot";
+      document.getElementById("statusText").innerText = "Disconnected";
+      document.getElementById("connectBtn").innerText = "Connect";
+      document.getElementById("connectBtn").classList.remove("danger-active");
+      document.getElementById("diagConn").innerText = "Offline";
+      document.getElementById("diagState").innerText = "IDLE";
+      document.getElementById("sysMsg").innerText = "Disconnected. Awaiting connection command.";
+      addLogEntry("SYSTEM: Connection closed.");
+    }
+
+    // ============================================================
+    // MQTT mode — connect via MQTT.js over WSS
+    // (works from Vercel / any HTTPS page; no mixed-content issue)
+    // ============================================================
+    function connectMqtt(brokerUrl) {
+      addLogEntry(`COMM: Connecting to MQTT broker ${brokerUrl}...`);
+
+      mqttClient = mqtt.connect(brokerUrl, {
+        clientId: "Dashboard_" + Math.random().toString(16).slice(2, 8),
+        clean: true,
+        reconnectPeriod: 0
+      });
+
+      mqttClient.on("connect", () => {
+        mqttClient.subscribe(MQTT_SENSOR_TOPIC, { qos: 0 });
+        mqttClient.subscribe(MQTT_MOTOR_TOPIC,  { qos: 0 });
+        setConnectedUI(brokerUrl);
+      });
+
+      mqttClient.on("message", (topic, messageBuffer) => {
+        handleIncomingMessage(messageBuffer.toString());
+      });
+
+      mqttClient.on("error", (err) => {
+        addLogEntry(`ERROR: MQTT error — ${err.message}`);
+        console.error(err);
+      });
+
+      mqttClient.on("close", () => {
+        if (mqttClient) {
+          setDisconnectedUI();
+          mqttClient = null;
+        }
+      });
+    }
+
+    function disconnectMqtt() {
+      if (mqttClient) {
+        const c = mqttClient;
+        mqttClient = null;
+        c.end(true);
+        setDisconnectedUI();
+      }
+    }
+
+    // ============================================================
+    // WebSocket mode — direct connection to ESP32 (local only)
+    // ============================================================
+    function connectWs(url) {
+      addLogEntry(`COMM: Connecting to ${url}...`);
+      localStorage.setItem("esp32_ws_ip", url);
+
+      try {
+        ws = new WebSocket(url);
+
+        ws.onopen = () => {
+          setConnectedUI(url);
+        };
+
+        ws.onmessage = (event) => {
+          handleIncomingMessage(event.data);
+        };
+
+        ws.onclose = () => {
+          setDisconnectedUI();
+          ws = null;
+        };
+
+        ws.onerror = (error) => {
+          addLogEntry("ERROR: WebSocket connection failed.");
+          console.error(error);
+        };
+
+      } catch (err) {
+        addLogEntry(`ERROR: Exception building socket: ${err.message}`);
+        document.getElementById("statusDot").className = "status-dot";
+        document.getElementById("statusText").innerText = "Error";
+      }
+    }
+
+    function disconnectWs() {
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        addLogEntry("USER: Disconnection request.");
+        ws.close();
+      }
+    }
+
+    // ============================================================
+    // Unified connect / disconnect toggle
+    // ============================================================
+    function toggleConnection() {
+      const mode = getMode();
+      const addr = document.getElementById("ipInput").value.trim();
+
+      if (mode === "mqtt") {
+        if (mqttClient) {
+          disconnectMqtt();
+        } else {
+          connectMqtt(addr);
+        }
+      } else {
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+          disconnectWs();
+        } else {
+          connectWs(addr);
+        }
+      }
+    }
+
+    // ============================================================
+    // Motor control — sends via MQTT publish or WebSocket send
+    // depending on the active connection mode
+    // ============================================================
+    function sendMotorCommand(command) {
+      const mode = getMode();
+
+      if (mode === "mqtt") {
+        if (!mqttClient || !mqttClient.connected) {
+          alert("MQTT broker not connected! Connect to broker first.");
+          return false;
+        }
+        mqttClient.publish(MQTT_MOTOR_TOPIC, command, { qos: 0, retain: false });
+        addLogEntry(`USER: MQTT publish [${MQTT_MOTOR_TOPIC}] -> ${command}`);
+        handleIncomingMessage(command);
+        return true;
+      } else {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          alert("ESP32 WebSocket not connected! Connect to ESP32 first.");
+          return false;
+        }
+        ws.send(command);
+        addLogEntry(`USER: WebSocket send -> ${command}`);
+        return true;
+      }
+    }
+
+    function toggleMotor() {
+      const command = motorRunning ? "MOTOR_OFF" : "MOTOR_ON";
+      const success = sendMotorCommand(command);
+
+      if (success && command === "MOTOR_ON") {
+        // Check if an auto-off timer was chosen
+        const timerSecs = parseInt(document.getElementById("motorTimerSelect").value, 10);
+        if (timerSecs > 0) {
+          addLogEntry(`MOTOR: Auto-off scheduled in ${timerSecs} seconds.`);
+          if (motorAutoOffTimeout) clearTimeout(motorAutoOffTimeout);
+          motorAutoOffTimeout = setTimeout(() => {
+            addLogEntry(`MOTOR: Auto-off timer expired (${timerSecs}s). Stopping motor.`);
+            sendMotorCommand("MOTOR_OFF");
+          }, timerSecs * 1000);
+        }
+      }
+    }
+
+    function pulseMotor(seconds) {
+      if (motorRunning) {
+        addLogEntry("MOTOR: Motor already running. Stop it before pulsing.");
+        return;
+      }
+      addLogEntry(`MOTOR: Initiating pulse run for ${seconds}s.`);
+      const success = sendMotorCommand("MOTOR_ON");
+      if (success) {
+        if (motorAutoOffTimeout) clearTimeout(motorAutoOffTimeout);
+        motorAutoOffTimeout = setTimeout(() => {
+          addLogEntry(`MOTOR: Pulse period ended (${seconds}s). Stopping motor.`);
+          sendMotorCommand("MOTOR_OFF");
+        }, seconds * 1000);
+      }
+    }
+
+  </script>
+</body>
+</html>
