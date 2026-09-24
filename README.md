@@ -4,7 +4,7 @@ An IoT compost monitoring system powered by ESP32, Arduino Uno, and HiveMQ MQTT.
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```text
 compost/
