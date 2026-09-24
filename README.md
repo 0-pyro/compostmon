@@ -1,6 +1,6 @@
-# 🌿 Compost Telemetry & Motor Monitor
+# Compost Monitor
 
-An IoT compost monitoring system and Windows 95-themed telemetry dashboard powered by ESP32, Arduino Uno, and HiveMQ MQTT.
+An IoT compost monitoring system powered by ESP32, Arduino Uno, and HiveMQ MQTT.
 
 ---
 
@@ -22,21 +22,7 @@ compost/
 
 ---
 
-## 🚀 Deploying to Vercel
-
-1. Push this repository to GitHub.
-2. Go to [vercel.com](https://vercel.com) and click **"Add New Project"**.
-3. Select your GitHub repository.
-4. In the configuration screen, look for **Root Directory**:
-   - Click **Edit** next to **Root Directory**.
-   - Select or type: `dashboard`
-5. Click **Deploy**.
-
-Vercel will deploy `dashboard/index.html` as your live web app. Any future `git push` to your repository will automatically redeploy the dashboard.
-
----
-
-## ⚡ Features & Architecture
+## Features & Architecture
 
 ### 1. Dashboard (`dashboard/index.html`)
 - **Dual Connection Modes**:
